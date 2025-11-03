@@ -49,7 +49,9 @@ def synthesize():
     form = request.form
     lang = form.get("lang", "").strip()
     text = form.get("text", "").strip()
-    spk = int(form.get("spk", 0))
+    spk = form.get("spk", None)
+    if spk is not None:
+        spk = int(spk)
     speed = float(form.get("speed", 1.0))
     timeout = float(form.get("timeout", SYNTH_TIMEOUT))
 
