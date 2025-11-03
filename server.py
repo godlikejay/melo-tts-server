@@ -4,7 +4,7 @@ import os
 import tempfile
 import uuid
 
-from flask import Flask, jsonify, request, send_file
+from flask import Flask, after_this_request, jsonify, request, send_file
 
 from pool import LanguageProcessPool
 
@@ -78,6 +78,15 @@ def synthesize():
         except Exception:
             pass
         return (f"synthesize failed: {result}", 500)
+
+    @after_this_request
+    def cleanup(response):
+        try:
+            if os.path.exists(result):
+                os.remove(result)
+        except Exception:
+            pass
+        return response
 
     return send_file(
         result,
