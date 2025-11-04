@@ -1,5 +1,7 @@
 # melo-tts
 
+![Docker Publish](https://github.com/godlikejay/melo-tts-server/actions/workflows/docker-publish.yml/badge.svg)
+
 基于 [Melo-TTS](https://github.com/myshell-ai/MeloTTS) ，修正相关依赖，并提供 HTTP server 实现。
 
 由于 melo 的实现每个语言为单独一个模型，同时提供多语言服务时容易 OOM，所以增加进程池管理，可通过环境变量 `MAX_LANGUAGES` 来指定内存最多可载入的语言模型数量。
