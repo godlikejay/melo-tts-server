@@ -1,23 +1,8 @@
 FROM python:3.9-slim
 
-# ENV PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple \
-#     PIP_TRUSTED_HOST=mirrors.aliyun.com \
-#     PIP_DEFAULT_TIMEOUT=600 \
-#     PIP_EXTRA_INDEX_URL=https://pypi.org/simple
-
-# RUN . /etc/os-release; \
-#     codename="${VERSION_CODENAME:-bookworm}"; \
-#     echo "Using Debian codename: $codename"; \
-#     sed -ri 's#http(s)?://deb.debian.org/debian#http://mirrors.aliyun.com/debian#g' /etc/apt/sources.list || true; \
-#     sed -ri 's#http(s)?://security.debian.org/debian-security#http://mirrors.aliyun.com/debian-security#g' /etc/apt/sources.list || true; \
-#     printf 'deb http://mirrors.aliyun.com/debian %s main contrib non-free non-free-firmware\n' "$codename" >  /etc/apt/sources.list; \
-#     printf 'deb http://mirrors.aliyun.com/debian %s-updates main contrib non-free non-free-firmware\n' "$codename" >> /etc/apt/sources.list; \
-#     printf 'deb http://mirrors.aliyun.com/debian-security %s-security main contrib non-free non-free-firmware\n' "$codename" >> /etc/apt/sources.list; \
-#     apt-get -y update
-
-RUN	apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y \
     ca-certificates build-essential libsndfile1 \
-	&& update-ca-certificates \
+    && update-ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install -U pip certifi
@@ -28,13 +13,27 @@ COPY requirements.txt /app
 RUN pip install -r requirements.txt
 
 COPY melo/ /app/melo/
-RUN python - <<EOF
+
+RUN python - <<'PYTHON'
 from melo.api import TTS
-for lang in ['ZH', 'JP', 'KR']:
+from melo import utils
+
+sample_text = {
+    'ZH': '你好，世界。',
+    'JP': 'こんにちは世界。',
+    'KR': '안녕하세요 세계.',
+}
+
+for lang, text in sample_text.items():
     model = TTS(language=lang, device='cpu')
-    model.tts_to_file('test', model.hps.data.spk2id[lang], '/tmp/tmp.wav', speed=1.0)
-EOF
-RUN rm /tmp/tmp.wav
+    utils.get_text_for_tts_infer(
+        text=text,
+        language_str=model.language,
+        hps=model.hps,
+        device=model.device,
+        symbol_to_id=model.symbol_to_id,
+    )
+PYTHON
 
 ENV PYTHONUNBUFFERED=1
 EXPOSE 8080
