@@ -21,6 +21,8 @@ pool = LanguageProcessPool(
     start_method="spawn",
 )
 
+LANG_MAP = {"zh": "ZH", "ko": "KR", "ja": "JP"}
+
 
 @app.route("/health", methods=["GET"])
 def health():
@@ -48,6 +50,7 @@ def synthesize():
     """
     form = request.form
     lang = form.get("lang", "").strip()
+    lang = LANG_MAP.get(lang, lang)
     text = form.get("text", "").strip()
     spk = form.get("spk", None)
     if spk is not None:
