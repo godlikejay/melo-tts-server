@@ -23,6 +23,18 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Free disk space (aggressive)
+        run: |
+          echo "Before:"; df -h
+          sudo rm -rf /usr/share/dotnet || true
+          sudo rm -rf /usr/local/lib/android || true
+          sudo rm -rf /opt/hostedtoolcache/CodeQL || true
+          docker system prune -af --volumes || true
+          docker builder prune -af || true
+          sudo apt-get clean || true
+          sudo rm -rf /var/lib/apt/lists/* || true
+          echo "After:"; df -h
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -88,5 +100,14 @@ jobs:
           tags: ${{ steps.vars.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64,linux/arm64
-          # cache-from: type=gha
-          # cache-to: type=gha,mode=max
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+      - name: Prune after build
+        if: always()
+        run: |
+          docker system df
+          docker system prune -af --volumes || true
+          docker builder prune -af || true
+          echo "Disk after prune:"; df -h
