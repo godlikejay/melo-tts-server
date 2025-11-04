@@ -1,0 +1,83 @@
+name: Publish Docker Image
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'          # v1.2.3 / v0.9.0 等
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute image name (lowercase)
+        id: vars
+        run: |
+          IMAGE="$REGISTRY/${{ github.repository }}"
+          IMAGE_LC=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')
+
+          REF="${{ github.ref }}"
+          SHORT_SHA=$(git rev-parse --short HEAD)
+
+          TAGS=""
+
+          if [[ "$REF" == refs/tags/* ]]; then
+            GIT_TAG="${REF#refs/tags/}"       # e.g. v1.2.3
+            VERSION="${GIT_TAG#v}"            # 1.2.3
+
+            TAGS+="$IMAGE_LC:${VERSION}"$'\n'
+
+            # 生成 semver 系列标签：1.2.3, 1.2, 1
+            #MAJOR=$(echo "$VERSION" | cut -d. -f1)
+            #MINOR=$(echo "$VERSION" | cut -d. -f2)
+            #PATCH=$(echo "$VERSION" | cut -d. -f3)
+            #TAGS+="$IMAGE_LC:${MAJOR}.${MINOR}"$'\n'
+            #TAGS+="$IMAGE_LC:${MAJOR}"$'\n'
+          else
+            TAGS+="$IMAGE_LC:latest"$'\n'
+          fi
+
+          echo "image=$IMAGE_LC" >> $GITHUB_OUTPUT
+          printf "tags<<EOF\n%s\nEOF\n" "$TAGS" >> $GITHUB_OUTPUT
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata (labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.vars.outputs.image }}
+          tags: |
+            type=raw,value=manual
+          labels: |
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.vars.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
