@@ -14,6 +14,13 @@ RUN pip install -r requirements.txt
 
 COPY melo/ /app/melo/
 
+ENV HF_HOME=/opt/hf_cache \
+    HUGGINGFACE_HUB_CACHE=/opt/hf_cache \
+    TRANSFORMERS_CACHE=/opt/hf_cache \
+    XDG_CACHE_HOME=/opt/hf_cache
+
+RUN mkdir -p /opt/hf_cache && chmod -R 777 /opt/hf_cache
+
 RUN python - <<'PYTHON'
 from melo.api import TTS
 from melo import utils
@@ -33,7 +40,11 @@ for lang, text in sample_text.items():
         device=model.device,
         symbol_to_id=model.symbol_to_id,
     )
+    del model
 PYTHON
+
+ENV HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1
 
 ENV PYTHONUNBUFFERED=1
 EXPOSE 8080
