@@ -70,6 +70,20 @@ def _worker_loop(language: str, device: str, in_q: mp.Queue, out_q: mp.Queue):
             speed = msg.get("speed", 1.0)
             # 可选：自定义阈值；未提供则使用默认值
             validate_threshold = float(msg.get("validate_threshold", 1e-4))
+            context_prefix = msg.get("context_prefix")
+            context_suffix = msg.get("context_suffix")
+            context_pause = msg.get("context_pause")
+            context_threshold = msg.get("context_threshold")
+            try:
+                if context_pause is not None:
+                    context_pause = int(context_pause)
+            except Exception:
+                context_pause = None
+            try:
+                if context_threshold is not None:
+                    context_threshold = int(context_threshold)
+            except Exception:
+                context_threshold = None
 
             if spk is None:
                 spk = tts.hps.data.spk2id[language]
@@ -77,13 +91,29 @@ def _worker_loop(language: str, device: str, in_q: mp.Queue, out_q: mp.Queue):
             try:
                 with torch.inference_mode():
                     tts.tts_to_file(
-                        text, spk, out, speed__=speed
+                        text,
+                        spk,
+                        out,
+                        speed__=speed,
+                        context_prefix=context_prefix,
+                        context_suffix=context_suffix,
+                        context_pause_blanks=context_pause,
+                        context_threshold=context_threshold,
                     )  # 兼容旧版/新版参数名
             except TypeError:
                 # 某些版本参数名为 speed 而非 speed__
                 try:
                     with torch.inference_mode():
-                        tts.tts_to_file(text, spk, out, speed=speed)
+                        tts.tts_to_file(
+                            text,
+                            spk,
+                            out,
+                            speed=speed,
+                            context_prefix=context_prefix,
+                            context_suffix=context_suffix,
+                            context_pause_blanks=context_pause,
+                            context_threshold=context_threshold,
+                        )
                 except Exception as e:
                     out_q.put((job_id, False, repr(e)))
                     continue
@@ -197,6 +227,10 @@ class LanguageProcessPool:
         timeout: Optional[float] = None,
         # 可选：按需覆盖检测阈值
         validate_threshold: Optional[float] = None,
+        context_prefix: Optional[str] = None,
+        context_suffix: Optional[str] = None,
+        context_pause: Optional[int] = None,
+        context_threshold: Optional[int] = None,
     ) -> Tuple[bool, str]:
         lang = language
         dev = device or self.default_device
@@ -219,6 +253,14 @@ class LanguageProcessPool:
         }
         if validate_threshold is not None:
             msg["validate_threshold"] = float(validate_threshold)
+        if context_prefix is not None:
+            msg["context_prefix"] = context_prefix
+        if context_suffix is not None:
+            msg["context_suffix"] = context_suffix
+        if context_pause is not None:
+            msg["context_pause"] = context_pause
+        if context_threshold is not None:
+            msg["context_threshold"] = context_threshold
 
         worker.in_q.put(msg)
 

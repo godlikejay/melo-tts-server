@@ -46,6 +46,9 @@ def synthesize():
       - spk:  可选，说话人索引，默认 0
       - speed: 可选，语速(浮点)，默认 1.0
       - timeout: 可选，超时(秒)，默认取 SYNTH_TIMEOUT
+      - context_prefix: 可选，短文本补句前缀
+      - context_suffix: 可选，短文本补句后缀
+      - context_pause:  可选，目标词前后附加的 blank 个数
     返回：audio/wav 二进制
     """
     form = request.form
@@ -57,6 +60,28 @@ def synthesize():
         spk = int(spk)
     speed = float(form.get("speed", 1.0))
     timeout = float(form.get("timeout", SYNTH_TIMEOUT))
+    context_prefix = form.get("context_prefix", None)
+    if context_prefix is not None:
+        context_prefix = context_prefix.strip()
+    context_suffix = form.get("context_suffix", None)
+    if context_suffix is not None:
+        context_suffix = context_suffix.strip()
+    context_pause = form.get("context_pause", None)
+    if context_pause is not None and context_pause.strip() != "":
+        try:
+            context_pause = int(context_pause)
+        except ValueError:
+            return ("context_pause must be an integer", 400)
+    else:
+        context_pause = None
+    context_threshold = form.get("context_threshold", None)
+    if context_threshold is not None and context_threshold.strip() != "":
+        try:
+            context_threshold = int(context_threshold)
+        except ValueError:
+            return ("context_threshold must be an integer", 400)
+    else:
+        context_threshold = None
 
     if not lang:
         return ("lang is required", 400)
@@ -72,6 +97,10 @@ def synthesize():
         speed=speed,
         device=DEFAULT_DEVICE,
         timeout=timeout,
+        context_prefix=context_prefix,
+        context_suffix=context_suffix,
+        context_pause=context_pause,
+        context_threshold=context_threshold,
     )
 
     if not ok:

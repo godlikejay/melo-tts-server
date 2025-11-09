@@ -979,6 +979,9 @@ class SynthesizerTrn(nn.Module):
         sdp_ratio=0,
         y=None,
         g=None,
+        phone_ids=None,
+        blank_trim_frames=None,
+        min_phone_frames=None,
     ):
         # x, m_p, logs_p, x_mask = self.enc_p(x, x_lengths, tone, language, bert)
         # g = self.gst(y)
@@ -998,8 +1001,35 @@ class SynthesizerTrn(nn.Module):
             sdp_ratio
         ) + self.dp(x, x_mask, g=g) * (1 - sdp_ratio)
         w = torch.exp(logw) * x_mask * length_scale
-        
+        if min_phone_frames is not None and phone_ids is not None:
+            phone_ids_tensor = phone_ids
+            if phone_ids_tensor.dim() == 2:
+                phone_ids_tensor = phone_ids_tensor.unsqueeze(1)
+            phone_ids_tensor = phone_ids_tensor[..., : w.size(-1)]
+            nonblank_mask = (phone_ids_tensor != 0).to(w.dtype)
+            min_tensor = torch.full_like(w, float(min_phone_frames))
+            w = torch.where(
+                nonblank_mask > 0,
+                torch.maximum(w, min_tensor),
+                w,
+            )
+
         w_ceil = torch.ceil(w)
+        if blank_trim_frames is not None and phone_ids is not None:
+            trim = max(int(blank_trim_frames), 1)
+            phone_ids_tensor = phone_ids
+            if phone_ids_tensor.dim() == 2:
+                phone_ids_tensor = phone_ids_tensor.unsqueeze(1)
+            phone_ids_tensor = phone_ids_tensor[..., : w_ceil.size(-1)]
+            start_blank = phone_ids_tensor[..., 0] == 0
+            end_blank = phone_ids_tensor[..., -1] == 0
+            trim_tensor = torch.full_like(w_ceil[..., 0], trim)
+            w_ceil[..., 0] = torch.where(
+                start_blank, torch.minimum(w_ceil[..., 0], trim_tensor), w_ceil[..., 0]
+            )
+            w_ceil[..., -1] = torch.where(
+                end_blank, torch.minimum(w_ceil[..., -1], trim_tensor), w_ceil[..., -1]
+            )
         y_lengths = torch.clamp_min(torch.sum(w_ceil, [1, 2]), 1).long()
         y_mask = torch.unsqueeze(commons.sequence_mask(y_lengths, None), 1).to(
             x_mask.dtype
