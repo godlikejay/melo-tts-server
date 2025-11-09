@@ -15,14 +15,38 @@ from .text.cleaner import clean_text
 
 
 class TTS(nn.Module):
-    SHORT_JP_PH_THRESHOLD = 5
-    SHORT_JP_MIN_PH = 3
-    SHORT_JP_MAX_BLANK_SEC = 0.05
-    SHORT_JP_MIN_PHONE_SEC = 0.08
-    SHORT_JP_MIN_PHONE_SEC_EXTRA = 0.12
-    SHORT_JP_CONTEXT_PREFIX_TEXT = "これは「"
-    SHORT_JP_CONTEXT_SUFFIX_TEXT = "」です。"
-    SHORT_JP_CONTEXT_PAUSE_BLANKS = 2
+    SHORT_CONTEXT_CONFIG = {
+        "JP": {
+            "threshold": 5,
+            "min_ph": 3,
+            "max_blank_sec": 0.05,
+            "min_phone_sec": 0.08,
+            "min_phone_sec_extra": 0.12,
+            "prefix": "これは「",
+            "suffix": "」です。",
+            "pause_blanks": 3,
+        },
+        "ZH": {
+            "threshold": 2,
+            "min_ph": 3,
+            "max_blank_sec": 0.05,
+            "min_phone_sec": 0.08,
+            "min_phone_sec_extra": 0.12,
+            "prefix": "这个词读：“",
+            "suffix": "。”",
+            "pause_blanks": 5,
+        },
+        "KR": {
+            "threshold": 2,
+            "min_ph": 3,
+            "max_blank_sec": 0.05,
+            "min_phone_sec": 0.08,
+            "min_phone_sec_extra": 0.12,
+            "prefix": '이것은 "',
+            "suffix": '" 입니다.',
+            "pause_blanks": 3,
+        },
+    }
 
     def __init__(
         self, language, device="auto", use_hf=True, config_path=None, ckpt_path=None
@@ -90,35 +114,48 @@ class TTS(nn.Module):
             print(" > ===========================")
         return texts
 
+    def _get_context_cfg(self, language: str):
+        if not language:
+            return None
+        cfg = self.SHORT_CONTEXT_CONFIG.get(language)
+        if cfg is None:
+            base_lang = language.split("_")[0]
+            cfg = self.SHORT_CONTEXT_CONFIG.get(base_lang)
+        if cfg is None:
+            return None
+        return cfg.copy()
+
     def _get_length_scale(self, language, meta, speed):
         base = 1.0 / max(speed, 1e-3)
         return base
 
-    def _get_blank_trim_frames(self, language, meta):
-        if language != "JP":
+    def _get_blank_trim_frames(self, cfg, meta):
+        if cfg is None:
             return None
         ph_count = meta.get("content_phonemes", 0)
-        if ph_count <= self.SHORT_JP_PH_THRESHOLD:
+        threshold = cfg.get("threshold", 0)
+        if ph_count <= threshold:
             sr = self.hps.data.sampling_rate
             hop = self.hps.data.hop_length
-            sec = self.SHORT_JP_MAX_BLANK_SEC
-            if ph_count <= self.SHORT_JP_MIN_PH:
+            sec = cfg.get("max_blank_sec", 0.0)
+            if ph_count <= cfg.get("min_ph", 0):
                 sec *= 0.5
             frames = int(round(sec * sr / hop))
             return max(frames, 1)
         return None
 
-    def _get_min_phone_frames(self, language, meta):
-        if language != "JP":
+    def _get_min_phone_frames(self, cfg, meta):
+        if cfg is None:
             return None
         ph_count = meta.get("content_phonemes", 0)
-        if ph_count <= self.SHORT_JP_PH_THRESHOLD:
+        threshold = cfg.get("threshold", 0)
+        if ph_count <= threshold:
             sr = self.hps.data.sampling_rate
             hop = self.hps.data.hop_length
             sec = (
-                self.SHORT_JP_MIN_PHONE_SEC_EXTRA
-                if ph_count <= self.SHORT_JP_MIN_PH
-                else self.SHORT_JP_MIN_PHONE_SEC
+                cfg.get("min_phone_sec_extra", cfg.get("min_phone_sec", 0.0))
+                if ph_count <= cfg.get("min_ph", 0)
+                else cfg.get("min_phone_sec", 0.0)
             )
             frames = int(round(sec * sr / hop))
             return max(frames, 1)
@@ -143,15 +180,21 @@ class TTS(nn.Module):
         return sum(1 for pid in phone_ids if pid != 0)
 
     def _maybe_apply_context(self, text, language, meta, context_cfg):
-        if language != "JP":
+        if context_cfg is None:
             return None
         ph_count = meta.get("content_phonemes", 0)
-        threshold = context_cfg.get("threshold", self.SHORT_JP_PH_THRESHOLD)
+        threshold = context_cfg.get("threshold", 0)
         if ph_count > threshold:
             return None
         prefix_text = context_cfg.get("prefix")
         suffix_text = context_cfg.get("suffix")
-        pause_blanks = max(0, int(context_cfg.get("pause", 0)))
+        pause_value = context_cfg.get("pause")
+        if pause_value is None:
+            pause_value = context_cfg.get("pause_blanks", 0)
+        try:
+            pause_blanks = max(0, int(pause_value))
+        except Exception:
+            pause_blanks = 0
         if not (prefix_text or suffix_text):
             return None
         target_ids = self._get_phone_ids_for_text(text, language)
@@ -263,36 +306,25 @@ class TTS(nn.Module):
         language = self.language
         texts = self.split_sentences_into_pieces(text, language, quiet)
         audio_list = []
-        ctx_prefix = (
-            self.SHORT_JP_CONTEXT_PREFIX_TEXT
-            if context_prefix is None
-            else context_prefix
-        )
-        ctx_suffix = (
-            self.SHORT_JP_CONTEXT_SUFFIX_TEXT
-            if context_suffix is None
-            else context_suffix
-        )
-        if context_pause_blanks is None:
-            ctx_pause = self.SHORT_JP_CONTEXT_PAUSE_BLANKS
-        else:
-            try:
-                ctx_pause = max(0, int(context_pause_blanks))
-            except Exception:
-                ctx_pause = self.SHORT_JP_CONTEXT_PAUSE_BLANKS
-        if context_threshold is None:
-            ctx_threshold = self.SHORT_JP_PH_THRESHOLD
-        else:
-            try:
-                ctx_threshold = max(0, int(context_threshold))
-            except Exception:
-                ctx_threshold = self.SHORT_JP_PH_THRESHOLD
-        context_cfg = {
-            "prefix": ctx_prefix,
-            "suffix": ctx_suffix,
-            "pause": ctx_pause,
-            "threshold": ctx_threshold,
-        }
+        base_cfg = self._get_context_cfg(language)
+        context_cfg = base_cfg.copy() if base_cfg else None
+        if context_cfg:
+            if "pause" not in context_cfg and "pause_blanks" in context_cfg:
+                context_cfg["pause"] = context_cfg["pause_blanks"]
+            if context_prefix is not None:
+                context_cfg["prefix"] = context_prefix
+            if context_suffix is not None:
+                context_cfg["suffix"] = context_suffix
+            if context_pause_blanks is not None:
+                try:
+                    context_cfg["pause"] = max(0, int(context_pause_blanks))
+                except Exception:
+                    pass
+            if context_threshold is not None:
+                try:
+                    context_cfg["threshold"] = max(0, int(context_threshold))
+                except Exception:
+                    pass
         if pbar:
             tx = pbar(texts)
         else:
@@ -310,10 +342,14 @@ class TTS(nn.Module):
                 t, language, self.hps, device, self.symbol_to_id
             )
             bert, ja_bert, phones, tones, lang_ids, meta = base_inputs
-            blank_trim_frames = self._get_blank_trim_frames(language, meta)
-            min_phone_frames = self._get_min_phone_frames(language, meta)
+            blank_trim_frames = self._get_blank_trim_frames(context_cfg, meta)
+            min_phone_frames = self._get_min_phone_frames(context_cfg, meta)
             context_strategy = None
-            if blank_trim_frames is not None and min_phone_frames is not None:
+            if (
+                context_cfg
+                and blank_trim_frames is not None
+                and min_phone_frames is not None
+            ):
                 context_strategy = self._maybe_apply_context(
                     t, language, meta, context_cfg
                 )
