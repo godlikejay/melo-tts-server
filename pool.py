@@ -15,7 +15,7 @@ def _worker_loop(language: str, device: str, in_q: mp.Queue, out_q: mp.Queue):
     """
     import torch
 
-    from melo.api import TTS
+    from melo_ext import MeloTTS
 
     torch.set_grad_enabled(False)
 
@@ -46,7 +46,7 @@ def _worker_loop(language: str, device: str, in_q: mp.Queue, out_q: mp.Queue):
 
     try:
         with torch.inference_mode():
-            tts = TTS(language=language, device=device)
+            tts = MeloTTS(language=language, device=device)
     except Exception as e:
         out_q.put(("__init__", False, f"Init error for {language}: {repr(e)}"))
         return

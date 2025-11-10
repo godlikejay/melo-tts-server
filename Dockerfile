@@ -49,6 +49,6 @@ ENV HF_HUB_OFFLINE=1 \
 ENV PYTHONUNBUFFERED=1
 EXPOSE 8080
 
-COPY pool.py server.py /app/
+COPY pool.py server.py melo_ext.py /app/
 
 CMD ["python", "server.py"]

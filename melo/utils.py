@@ -21,7 +21,6 @@ logger = logging.getLogger(__name__)
 
 def get_text_for_tts_infer(text, language_str, hps, device, symbol_to_id=None):
     norm_text, phone, tone, word2ph = clean_text(text, language_str)
-    content_phonemes = sum(1 for p in phone if p != "_")
     phone, tone, language = cleaned_text_to_sequence(phone, tone, language_str, symbol_to_id)
 
     if hps.data.add_blank:
@@ -56,8 +55,7 @@ def get_text_for_tts_infer(text, language_str, hps, device, symbol_to_id=None):
     phone = torch.LongTensor(phone)
     tone = torch.LongTensor(tone)
     language = torch.LongTensor(language)
-    meta = {"norm_text": norm_text, "content_phonemes": content_phonemes}
-    return bert, ja_bert, phone, tone, language, meta
+    return bert, ja_bert, phone, tone, language
 
 def load_checkpoint(checkpoint_path, model, optimizer=None, skip_optimizer=False):
     assert os.path.isfile(checkpoint_path)
