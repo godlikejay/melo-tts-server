@@ -14,34 +14,17 @@ RUN pip install -r requirements.txt
 
 COPY melo/ /app/melo/
 
-ENV HF_HOME=/opt/hf_cache \
+ARG PRELOAD_LANGUAGES="ZH,JP,KR"
+ENV PRELOAD_LANGUAGES="${PRELOAD_LANGUAGES}" \
+    HF_HOME=/opt/hf_cache \
     HUGGINGFACE_HUB_CACHE=/opt/hf_cache \
     TRANSFORMERS_CACHE=/opt/hf_cache \
     XDG_CACHE_HOME=/opt/hf_cache
 
 RUN mkdir -p /opt/hf_cache && chmod -R 777 /opt/hf_cache
 
-RUN python - <<'PYTHON'
-from melo.api import TTS
-from melo import utils
-
-sample_text = {
-    'ZH': '你好，世界。',
-    'JP': 'こんにちは世界。',
-    'KR': '안녕하세요 세계.',
-}
-
-for lang, text in sample_text.items():
-    model = TTS(language=lang, device='cpu')
-    utils.get_text_for_tts_infer(
-        text=text,
-        language_str=model.language,
-        hps=model.hps,
-        device=model.device,
-        symbol_to_id=model.symbol_to_id,
-    )
-    del model
-PYTHON
+COPY init_models.py /app/
+RUN python init_models.py --languages "$PRELOAD_LANGUAGES"
 
 ENV HF_HUB_OFFLINE=1 \
     TRANSFORMERS_OFFLINE=1
