@@ -24,8 +24,8 @@ jobs:
         include:
           - variant: cjk
             preload_languages: "ZH,JP,KR"
-          - variant: full
-            preload_languages: "ZH,JP,KR,EN,FR,ES"
+          # - variant: full
+          #   preload_languages: "ZH,JP,KR,EN,FR,ES"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
