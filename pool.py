@@ -7,6 +7,48 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Dict, Optional, Tuple
 
+import compat  # noqa: F401  # ensures importlib.metadata patch
+
+
+def _resolve_speaker_by_label(spk_map, label: Optional[str]):
+    """Map a speaker label (e.g. 'EN-US') to its numeric id."""
+    if spk_map is None or not label:
+        return None
+    try:
+        items = spk_map.items()
+    except AttributeError:
+        items = getattr(spk_map, "__dict__", {}).items()
+    target = str(label).upper()
+    for key, value in items:
+        if str(key).upper() == target:
+            return value
+    return None
+
+
+def _select_default_speaker(spk_map, language: str):
+    """
+    Resolve a sensible default speaker id for the requested language.
+    Prioritizes an exact match (case-insensitive) and falls back to speakers whose
+    keys start with e.g. EN-*, otherwise returns the first available speaker id.
+    """
+    if spk_map is None:
+        return None
+    try:
+        items = spk_map.items()
+    except AttributeError:  # pragma: no cover - unexpected type
+        items = getattr(spk_map, "__dict__", {}).items()
+
+    target = language.upper()
+    fallback = None
+    prefix = f"{target}-"
+    for key, value in items:
+        if fallback is None:
+            fallback = value
+        key_upper = str(key).upper()
+        if key_upper == target or key_upper.startswith(prefix):
+            return value
+    return fallback
+
 
 def _worker_loop(language: str, device: str, in_q: mp.Queue, out_q: mp.Queue):
     """
@@ -66,6 +108,7 @@ def _worker_loop(language: str, device: str, in_q: mp.Queue, out_q: mp.Queue):
             job_id = msg["id"]
             text = msg["text"]
             spk = msg["spk"]
+            spk_label = msg.get("spk_label")
             out = msg["out"]
             speed = msg.get("speed", 1.0)
             # 可选：自定义阈值；未提供则使用默认值
@@ -85,8 +128,13 @@ def _worker_loop(language: str, device: str, in_q: mp.Queue, out_q: mp.Queue):
             except Exception:
                 context_threshold = None
 
+            if spk is None and spk_label:
+                spk = _resolve_speaker_by_label(tts.hps.data.spk2id, spk_label)
             if spk is None:
-                spk = tts.hps.data.spk2id[language]
+                spk = _select_default_speaker(tts.hps.data.spk2id, language)
+                if spk is None:
+                    out_q.put((job_id, False, f"No default speaker for {language}"))
+                    continue
 
             try:
                 with torch.inference_mode():
@@ -222,6 +270,7 @@ class LanguageProcessPool:
         text: str,
         out_path: str,
         spk: int = None,
+        spk_label: Optional[str] = None,
         speed: float = 1.0,
         device: Optional[str] = None,
         timeout: Optional[float] = None,
@@ -251,6 +300,8 @@ class LanguageProcessPool:
             "out": out_path,
             "speed": speed,
         }
+        if spk_label is not None:
+            msg["spk_label"] = spk_label
         if validate_threshold is not None:
             msg["validate_threshold"] = float(validate_threshold)
         if context_prefix is not None:

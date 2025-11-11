@@ -1,6 +1,7 @@
 import re
 from typing import Any, Dict, Optional, Tuple
 
+import compat  # noqa: F401  # ensures importlib.metadata patch
 import soundfile
 import torch
 from tqdm import tqdm
