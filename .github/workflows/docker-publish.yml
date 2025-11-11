@@ -16,7 +16,16 @@ env:
 
 jobs:
   build-and-push:
+    name: Build and push (${{ matrix.variant }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: cjk
+            preload_languages: "ZH,JP,KR"
+          - variant: full
+            preload_languages: "ZH,JP,KR,EN,FR,ES"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -52,6 +61,7 @@ jobs:
 
           REF="${{ github.ref }}"
           SHORT_SHA=$(git rev-parse --short HEAD)
+          VARIANT="${{ matrix.variant }}"
 
           TAGS=""
 
@@ -59,7 +69,12 @@ jobs:
             GIT_TAG="${REF#refs/tags/}"       # e.g. v1.2.3
             VERSION="${GIT_TAG#v}"            # 1.2.3
 
-            TAGS+="$IMAGE_LC:${VERSION}"$'\n'
+            if [[ "$VARIANT" == "full" ]]; then
+              TAGS+="$IMAGE_LC:${VERSION}-full"$'\n'
+            else
+              TAGS+="$IMAGE_LC:${VERSION}"$'\n'
+              TAGS+="$IMAGE_LC:${VERSION}-cjk"$'\n'
+            fi
 
             # 生成 semver 系列标签：1.2.3, 1.2, 1
             #MAJOR=$(echo "$VERSION" | cut -d. -f1)
@@ -68,7 +83,14 @@ jobs:
             #TAGS+="$IMAGE_LC:${MAJOR}.${MINOR}"$'\n'
             #TAGS+="$IMAGE_LC:${MAJOR}"$'\n'
           else
-            TAGS+="$IMAGE_LC:latest"$'\n'
+            if [[ "$VARIANT" == "full" ]]; then
+              TAGS+="$IMAGE_LC:latest-full"$'\n'
+              TAGS+="$IMAGE_LC:full"$'\n'
+            else
+              TAGS+="$IMAGE_LC:latest"$'\n'
+              TAGS+="$IMAGE_LC:cjk"$'\n'
+              TAGS+="$IMAGE_LC:latest-cjk"$'\n'
+            fi
           fi
 
           echo "image=$IMAGE_LC" >> $GITHUB_OUTPUT
@@ -96,6 +118,8 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          build-args: |
+            PRELOAD_LANGUAGES=${{ matrix.preload_languages }}
           push: true
           tags: ${{ steps.vars.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
