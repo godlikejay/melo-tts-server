@@ -13,6 +13,7 @@ COPY requirements.txt /app
 RUN pip install -r requirements.txt
 
 COPY melo/ /app/melo/
+COPY compat.py /app/
 
 ARG PRELOAD_LANGUAGES="ZH,JP,KR"
 ENV PRELOAD_LANGUAGES="${PRELOAD_LANGUAGES}" \
